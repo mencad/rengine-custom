@@ -9,7 +9,7 @@
 # retries: 1                        # Nuclei
 
 subdomain_discovery: {
-  'uses_tools': ['subfinder', 'ctfr', 'sublist3r', 'tlsx', 'oneforall', 'netlas'],  # amass-passive, amass-active, All
+  'uses_tools': ['subfinder', 'ctfr', 'sublist3r', 'oneforall', 'netlas'],  # amass-passive, amass-active, All
   'enable_http_crawl': true,
   'threads': 30,
   'timeout': 5,
@@ -26,7 +26,11 @@ port_scan: {
   'timeout': 5,
   # 'exclude_ports': [],
   # 'exclude_subdomains': [],
-  'ports': ['top-100'],
+  'ports': [
+    '80', '443', '3000', '2375', '2376', '3306', '5432', '5601', '6379',
+    '8000', '8080', '8081', '8088', '8089', '8443', '8888', '9090', '9092',
+    '9100', '9200', '9300', '9443', '10000', '11211', '15672', '27017', '50000'
+  ],
   'rate_limit': 150,
   'threads': 30,
   'passive': false,
@@ -75,6 +79,23 @@ dir_file_fuzz: {
   'timeout': 5,
   'threads': 30,
   'wordlist_name': 'dicc'
+}
+api_discovery: {
+  'run_kiteruner': true,
+  'threads': 30,
+  'only_api_targets': true,
+  'wordlist': '/usr/src/wordlist/kiterunner/routes-small.kite'
+}
+ssrf_audit: {
+  'enable': true,
+  'callback_domain': 'oast.pro',
+  'max_urls': 50
+}
+vhost_fuzzing: {
+  'threads': 30,
+  'timeout': 5,
+  'auto_calibration': true,
+  'wordlist': '/usr/src/wordlist/subdomains-top5000.txt'
 }
 fetch_url: {
   'uses_tools': ['gospider', 'hakrawler', 'waybackurls', 'katana', 'gau'],

@@ -997,7 +997,7 @@ class FetchSubscanResults(APIView):
 			dirs_in_subscan = DirectoryScan.objects.filter(dir_subscan_ids__in=subscan)
 			subscan_results = DirectoryScanSerializer(dirs_in_subscan, many=True).data
 
-		elif task_name == 'subdomain_discovery':
+		elif task_name in ['subdomain_discovery', 'vhost_fuzzing']:
 			subdomains_in_subscan = Subdomain.objects.filter(subdomain_subscan_ids__in=subscan)
 			subscan_results = SubdomainSerializer(subdomains_in_subscan, many=True).data
 

@@ -3,6 +3,7 @@ FROM ubuntu:22.04
 
 ARG GECKOVERSION=0.33.0
 ARG GOVERSION=1.21.5
+ARG KITERUNNER_VERSION=1.0.2
 
 RUN ARCH=$(dpkg --print-architecture) \ 
     && if [ "${ARCH}" ! "arm64" ] || [ "${ARCH}" ! "amd64" ]; then \
@@ -69,6 +70,23 @@ RUN ARCH=$(dpkg --print-architecture) \
     && rm ${GECKOPATH} \
     && mv geckodriver /usr/bin
 
+# Install Kiterunner (kr) for API discovery
+RUN ARCH=$(dpkg --print-architecture) \
+    && if [ "${ARCH}" = "arm64" ]; then \
+      KRPATH="kiterunner_${KITERUNNER_VERSION}_linux_arm64.tar.gz"; \
+    else \
+      KRPATH="kiterunner_${KITERUNNER_VERSION}_linux_amd64.tar.gz"; \
+    fi \
+    && wget -q https://github.com/assetnote/kiterunner/releases/download/v${KITERUNNER_VERSION}/${KRPATH} \
+    && tar -xzf ${KRPATH} \
+    && rm -f ${KRPATH} \
+    && mv kr /usr/local/bin/kr \
+    && chmod +x /usr/local/bin/kr \
+    && mkdir -p /usr/src/wordlist/kiterunner \
+    && wget -q https://wordlists-cdn.assetnote.io/data/kiterunner/routes-small.kite.tar.gz -O /tmp/routes-small.kite.tar.gz \
+    && tar -xzf /tmp/routes-small.kite.tar.gz -C /usr/src/wordlist/kiterunner/ \
+    && rm -f /tmp/routes-small.kite.tar.gz
+
 # Install Rust for orjson
 RUN set -e; curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -92,9 +110,9 @@ RUN printf "\
     github.com/lc/gau/v2/cmd/gau@latest\n\
     github.com/owasp-amass/amass/v3/...@latest\n\
     github.com/ffuf/ffuf@latest\n\
-    github.com/projectdiscovery/tlsx/cmd/tlsx@latest\n\
     github.com/hahwul/dalfox/v2@latest\n\
     github.com/projectdiscovery/katana/cmd/katana@latest\n\
+    github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest\n\
     github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest\n\
     github.com/sa7mon/s3scanner@latest\n" | \
     xargs -L1 go install -ldflags="-s -w" -v && \

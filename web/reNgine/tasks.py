@@ -183,23 +183,22 @@ def initiate_scan(
 
 
 		# Build Celery tasks, crafted according to the dependency graph below:
-		# subdomain_discovery --> port_scan --> fetch_url --> dir_file_fuzz
-		# osint								             	  vulnerability_scan
-		# osint								             	  dalfox xss scan
-		#						 	   		         	  	  screenshot
-		#													  waf_detection
+		# subdomain_discovery --> port_scan --> waf_detection --> fetch_url --> dir_file_fuzz
+		# osint								             	                    vulnerability_scan
+		# osint								             	                    dalfox xss scan
+		#						 	   		         	  	                    screenshot
 		workflow = chain(
 			group(
 				subdomain_discovery.si(ctx=ctx, description='Subdomain discovery'),
 				osint.si(ctx=ctx, description='OS Intelligence')
 			),
 			port_scan.si(ctx=ctx, description='Port scan'),
+			waf_detection.si(ctx=ctx, description='WAF detection'),
 			fetch_url.si(ctx=ctx, description='Fetch URL'),
 			group(
 				dir_file_fuzz.si(ctx=ctx, description='Directories & files fuzz'),
 				vulnerability_scan.si(ctx=ctx, description='Vulnerability scan'),
-				screenshot.si(ctx=ctx, description='Screenshot'),
-				waf_detection.si(ctx=ctx, description='WAF detection')
+				screenshot.si(ctx=ctx, description='Screenshot')
 			)
 		)
 
@@ -483,12 +482,6 @@ def subdomain_discovery(
 				cmd = f'python3 /usr/src/github/ctfr/ctfr.py -d {host} -o {results_file}'
 				cmd_extract = f"cat {results_file} | sed 's/\*.//g' | tail -n +12 | uniq | sort > {results_file}"
 				cmd += f' && {cmd_extract}'
-
-			elif tool == 'tlsx':
-				results_file = self.results_dir + '/subdomains_tlsx.txt'
-				cmd = f'tlsx -san -cn -silent -ro -host {host}'
-				cmd += f" | sed -n '/^\([a-zA-Z0-9]\([-a-zA-Z0-9]*[a-zA-Z0-9]\)\?\.\)\+{host}$/p' | uniq | sort"
-				cmd += f' > {results_file}'
 
 			elif tool == 'netlas':
 				results_file = self.results_dir + '/subdomains_netlas.txt'
@@ -1589,6 +1582,10 @@ def waf_detection(self, ctx={}, description=None):
 		ctx=ctx
 	)
 
+	if not os.path.isfile(input_path) or os.path.getsize(input_path) == 0:
+		logger.info('No alive HTTP endpoints found for WAF detection. Skipping.')
+		return []
+
 	cmd = f'wafw00f -i {input_path} -o {self.output_path}'
 	run_command(
 		cmd,
@@ -1602,12 +1599,15 @@ def waf_detection(self, ctx={}, description=None):
 	with open(self.output_path) as file:
 		wafs = file.readlines()
 
+	detected_wafs = []
 	for line in wafs:
 		line = " ".join(line.split())
 		splitted = line.split(' ', 1)
+		if len(splitted) < 2:
+			continue
 		waf_info = splitted[1].strip()
-		waf_name = waf_info[:waf_info.find('(')].strip()
-		waf_manufacturer = waf_info[waf_info.find('(')+1:waf_info.find(')')].strip().replace('.', '')
+		waf_name = waf_info[:waf_info.find('(')].strip() if '(' in waf_info else waf_info.strip()
+		waf_manufacturer = waf_info[waf_info.find('(')+1:waf_info.find(')')].strip().replace('.', '') if '(' in waf_info else ''
 		http_url = sanitize_url(splitted[0].strip())
 		if not waf_name or waf_name == 'None':
 			continue
@@ -1617,6 +1617,7 @@ def waf_detection(self, ctx={}, description=None):
 			name=waf_name,
 			manufacturer=waf_manufacturer
 		)
+		detected_wafs.append(waf_name)
 
 		# Add waf info to Subdomain in DB
 		subdomain = get_subdomain_from_url(http_url)
@@ -1624,6 +1625,23 @@ def waf_detection(self, ctx={}, description=None):
 		subdomain_query, _ = Subdomain.objects.get_or_create(scan_history=self.scan, name=subdomain)
 		subdomain_query.waf.add(waf)
 		subdomain_query.save()
+
+	if detected_wafs:
+		waf_summary = ", ".join(sorted(set(detected_wafs)))
+		waf_marker_file = f'{self.results_dir}/waf_detected.txt'
+		try:
+			with open(waf_marker_file, 'w') as wf:
+				wf.write(waf_summary)
+		except Exception as we:
+			logger.error(f'Failed to write WAF marker file: {we}')
+		logger.warning(f'🛡️ [WAF Detected] Protected by: {waf_summary}. Auto-throttling activated for subsequent fuzzing & scanning.')
+		try:
+			domain_name = self.domain.name if self.domain else "Target"
+			msg = f"🛡️ *[WAF Detected]* Target `{domain_name}` is protected by *{waf_summary}*. reNgine has automatically throttled scan rates and enabled WAF evasion to avoid IP bans."
+			send_notif.delay(msg)
+		except Exception as notif_err:
+			logger.error(f"Failed to send WAF notification: {notif_err}")
+
 	return wafs
 
 
@@ -1662,7 +1680,18 @@ def dir_file_fuzz(self, ctx={}, description=None):
 	timeout = config.get(TIMEOUT) or self.yaml_configuration.get(TIMEOUT, DEFAULT_HTTP_TIMEOUT)
 	threads = config.get(THREADS) or self.yaml_configuration.get(THREADS, DEFAULT_THREADS)
 	wordlist_name = config.get(WORDLIST, 'dicc')
+
+	# Smart Auto-Throttling if WAF is detected
+	waf_marker_file = f'{self.results_dir}/waf_detected.txt'
+	has_waf = os.path.isfile(waf_marker_file) or (self.scan and Waf.objects.filter(subdomain__scan_history=self.scan).exists())
+	if has_waf:
+		logger.warning('🛡️ WAF detected on target! Applying smart throttling to ffuf to prevent IP ban.')
+		threads = min(threads, 5) if threads else 5
+		rate_limit = min(rate_limit, 25) if rate_limit else 25
+
 	delay = rate_limit / (threads * 100) # calculate request pause delay from rate_limit and number of threads
+	if has_waf:
+		delay = max(delay, 0.4) # ensure at least 400ms pause when WAF is active
 	input_path = f'{self.results_dir}/input_dir_file_fuzz.txt'
 
 	# Get wordlist
@@ -2403,6 +2432,14 @@ def nuclei_scan(self, urls=[], ctx={}, description=None):
 	concurrency = config.get(NUCLEI_CONCURRENCY) or self.yaml_configuration.get(THREADS, DEFAULT_THREADS)
 	intensity = config.get(INTENSITY) or self.yaml_configuration.get(INTENSITY, DEFAULT_SCAN_INTENSITY)
 	rate_limit = config.get(RATE_LIMIT) or self.yaml_configuration.get(RATE_LIMIT, DEFAULT_RATE_LIMIT)
+
+	# Smart Auto-Throttling if WAF is detected
+	waf_marker_file = f'{self.results_dir}/waf_detected.txt'
+	has_waf = os.path.isfile(waf_marker_file) or (self.scan and Waf.objects.filter(subdomain__scan_history=self.scan).exists())
+	if has_waf:
+		logger.warning('🛡️ WAF detected on target! Applying smart throttling to Nuclei concurrency & rate-limit.')
+		concurrency = min(concurrency, 5) if concurrency else 5
+		rate_limit = min(rate_limit, 25) if rate_limit else 25
 	retries = config.get(RETRIES) or self.yaml_configuration.get(RETRIES, DEFAULT_RETRIES)
 	timeout = config.get(TIMEOUT) or self.yaml_configuration.get(TIMEOUT, DEFAULT_HTTP_TIMEOUT)
 	custom_headers = self.yaml_configuration.get(CUSTOM_HEADERS, [])
@@ -2550,6 +2587,15 @@ def dalfox_xss_scan(self, urls=[], ctx={}, description=None):
 	timeout = dalfox_config.get(TIMEOUT)
 	delay = dalfox_config.get(DELAY)
 	threads = dalfox_config.get(THREADS) or self.yaml_configuration.get(THREADS, DEFAULT_THREADS)
+
+	# Smart Auto-Throttling & Evasion if WAF is detected
+	waf_marker_file = f'{self.results_dir}/waf_detected.txt'
+	has_waf = os.path.isfile(waf_marker_file) or (self.scan and Waf.objects.filter(subdomain__scan_history=self.scan).exists())
+	if has_waf:
+		logger.warning('🛡️ WAF detected on target! Enabling --waf-evasion and throttling dalfox workers.')
+		is_waf_evasion = True
+		threads = min(threads, 5) if threads else 5
+		delay = max(delay, 1) if delay else 1
 	input_path = f'{self.results_dir}/input_endpoints_dalfox_xss.txt'
 
 	if urls:
@@ -3833,7 +3879,7 @@ def query_whois(target, force_reload_whois=False):
 					if func_name == 'historical_ips':
 						domain_info.historical_ips = result
 					elif func_name == 'related_tlds_and_domains':
-						domain_info.related_tlds, tlsx_related_domain = result
+						domain_info.related_tlds, extracted_related_domains = result
 					elif func_name == 'reverse_whois':
 						related_domains = result
 					elif func_name == 'whois_data':
@@ -3850,8 +3896,8 @@ def query_whois(target, force_reload_whois=False):
 
 		logger.info(f'All concurrent whosi lookup tasks finished for target {target}')
 
-		if 'tlsx_related_domain' in locals():
-			related_domains += tlsx_related_domain
+		if 'extracted_related_domains' in locals():
+			related_domains += extracted_related_domains
 		
 		whois_data = whois_data.get('data', {})
 
@@ -3890,32 +3936,6 @@ def fetch_related_tlds_and_domains(domain):
 	logger.info(f"Fetching related TLDs and domains for {domain}")
 	related_tlds = set()
 	related_domains = set()
-	
-	# Extract the base domain
-	extracted = tldextract.extract(domain)
-	base_domain = f"{extracted.domain}.{extracted.suffix}"
-	
-	cmd = f'tlsx -san -cn -silent -ro -host {domain}'
-	_, result = run_command(cmd, shell=True)
-
-	for line in result.splitlines():
-		try:
-				line = line.strip()
-				if line == "":
-					continue
-				extracted_result = tldextract.extract(line)
-				full_domain = f"{extracted_result.domain}.{extracted_result.suffix}"
-				
-				if extracted_result.domain == extracted.domain:
-					if full_domain != base_domain:
-						related_tlds.add(full_domain)
-				elif extracted_result.domain != extracted.domain or extracted_result.subdomain:
-					related_domains.add(line)
-		except Exception as e:
-			logger.error(f"An error occurred while fetching related TLDs and domains for {domain}: {str(e)}")
-			continue
-	
-	logger.info(f"Found {len(related_tlds)} related TLDs and {len(related_domains)} related domains for {domain}")
 	return list(related_tlds), list(related_domains)
 
 
@@ -4733,3 +4753,220 @@ def llm_vulnerability_description(vulnerability_id):
 			vuln.save()
 
 	return response
+
+
+# -------------------------------------------------------------
+# Custom Sharingan-style Real-time & JS Monitoring Tasks
+# -------------------------------------------------------------
+@app.task(name='run_certstream_monitor', bind=False)
+def run_certstream_monitor():
+	"""Run real-time Certstream certificate transparency monitor."""
+	from reNgine.certstream_monitor import start_certstream_worker
+	start_certstream_worker()
+
+
+@app.task(name='monitor_domain_js_files', bind=False)
+def monitor_domain_js_files(domain_id):
+	"""Monitor JavaScript files for a target domain for changes and secrets."""
+	from targetApp.models import Domain
+	from startScan.models import EndPoint
+	from reNgine.js_monitor import check_and_diff_js_file, notify_js_change
+
+	try:
+		domain = Domain.objects.get(id=domain_id)
+		js_endpoints = EndPoint.objects.filter(
+			target_domain=domain,
+			http_url__iregex=r'\.js(\?.*)?$'
+		).values_list('http_url', flat=True).distinct()
+
+		for js_url in js_endpoints[:50]:
+			res = check_and_diff_js_file(js_url)
+			if res.get('is_changed') or res.get('secrets'):
+				notify_js_change(domain.name, res)
+	except Exception as e:
+		logger.error(f"[JS Monitor Task Error] {str(e)}")
+
+
+@app.task(name='kiterunner_scan', queue='main_scan_queue', base=RengineTask, bind=True)
+def kiterunner_scan(self, urls=[], ctx={}, description=None):
+	"""Perform API endpoint discovery using Kiterunner (Assetnote)."""
+	from reNgine.kiterunner import run_kr_scan, is_api_candidate
+
+	logger.info('[Kiterunner] Starting API discovery task...')
+	config = self.yaml_configuration.get('api_discovery') or {}
+	concurrency = config.get('threads', 30)
+	wordlist = config.get('wordlist', None)
+	only_api_targets = config.get('only_api_targets', True)
+
+	# Fetch alive URLs if not provided
+	if not urls:
+		urls = get_http_urls(is_alive=True, ignore_files=True, ctx=ctx)
+
+	if not urls:
+		logger.info('[Kiterunner] No alive URLs found to scan.')
+		return
+
+	# Filter target candidates
+	if only_api_targets:
+		targets = [u for u in urls if is_api_candidate(u)]
+		if not targets:
+			# Fallback to first 5 primary alive targets
+			targets = urls[:5]
+	else:
+		targets = urls[:20]
+
+	logger.info(f'[Kiterunner] Scanning {len(targets)} candidate hosts for API routes...')
+
+	total_discovered = 0
+	for target in targets:
+		discovered = run_kr_scan(target, wordlist=wordlist, concurrency=concurrency)
+		for item in discovered:
+			url = item.get('url')
+			if not url:
+				continue
+			status = item.get('status', 0)
+			length = item.get('length', 0)
+
+			endpoint, created = save_endpoint(url, crawl=False, ctx=ctx)
+			if endpoint:
+				endpoint.http_status = status
+				endpoint.content_length = length
+				endpoint.save()
+				total_discovered += 1
+
+	logger.info(f'[Kiterunner] Completed API discovery. Registered {total_discovered} new endpoints.')
+
+
+@app.task(name='ssrf_oob_audit', queue='main_scan_queue', base=RengineTask, bind=True)
+def ssrf_oob_audit(self, urls=[], ctx={}, description=None):
+	"""Perform automated Out-of-Band SSRF auditing on candidate parameters."""
+	import uuid
+	from reNgine.ssrf_tester import extract_ssrf_candidates, craft_ssrf_payload_url, send_ssrf_probe
+	from startScan.models import EndPoint
+
+	logger.info('[SSRF Automator] Starting Out-of-Band SSRF audit task...')
+	config = self.yaml_configuration.get('ssrf_audit') or {}
+	callback_domain = config.get('callback_domain') or os.getenv('SSRF_CALLBACK_DOMAIN', 'oast.pro')
+	max_urls = config.get('max_urls', 100)
+
+	if not urls:
+		scan_id = self.scan_id
+		if scan_id:
+			urls = list(EndPoint.objects.filter(scan_history_id=scan_id).values_list('http_url', flat=True)[:500])
+		else:
+			urls = get_http_urls(is_alive=True, ignore_files=True, ctx=ctx)
+
+	candidates = extract_ssrf_candidates(urls)
+	logger.info(f'[SSRF Automator] Found {len(candidates)} candidate parameters for SSRF audit.')
+
+	if not candidates:
+		return
+
+	probed_count = 0
+	for cand in candidates[:max_urls]:
+		tag = uuid.uuid4().hex[:8]
+		probe_url = craft_ssrf_payload_url(cand, callback_domain, tag=tag)
+		success, status_code = send_ssrf_probe(probe_url, timeout=5)
+		if success:
+			probed_count += 1
+
+	logger.info(f'[SSRF Automator] Dispatched {probed_count} OOB SSRF probes to {callback_domain}.')
+
+
+
+
+
+@app.task(name='vhost_fuzzing', queue='main_scan_queue', base=RengineTask, bind=True)
+def vhost_fuzzing(self, ctx={}, description=None):
+	"""Perform Virtual Host (VHost) fuzzing and discovery on target hosts."""
+	from reNgine.vhost_fuzzer import run_vhost_fuzz
+	from startScan.models import Subdomain, SubScan, Domain
+	from django.utils import timezone
+
+	logger.info('[VHost Fuzzer] Starting Virtual Host discovery task...')
+	config = self.yaml_configuration.get('vhost_fuzzing') or {}
+	threads = config.get('threads', 30)
+	timeout = config.get('timeout', 5)
+	wordlist = config.get('wordlist', None)
+
+	subdomain_id = ctx.get('subdomain_id') or getattr(self, 'subdomain_id', None)
+	domain_id = ctx.get('domain_id') or getattr(self, 'domain_id', None)
+	subscan_id = ctx.get('subscan_id') or getattr(self, 'subscan_id', None)
+	results_dir = ctx.get('results_dir') or getattr(self, 'results_dir', '/tmp/rengine_vhost')
+
+	subscan = getattr(self, 'subscan', None) or (SubScan.objects.filter(pk=subscan_id).first() if subscan_id else None)
+
+	targets_to_probe = []
+
+	if subdomain_id:
+		subdomain = Subdomain.objects.filter(pk=subdomain_id).first()
+		if subdomain:
+			target_addr = subdomain.http_url or subdomain.name
+			target_domain = subdomain.target_domain
+			if target_domain:
+				targets_to_probe.append((target_addr, target_domain))
+	else:
+		if domain_id:
+			domain = Domain.objects.filter(pk=domain_id).first()
+			if domain:
+				alive_subs = Subdomain.objects.filter(target_domain=domain, http_status__gt=0)[:10]
+				for s in alive_subs:
+					targets_to_probe.append((s.http_url or s.name, domain))
+
+	if not targets_to_probe:
+		logger.info('[VHost Fuzzer] No valid targets found for VHost fuzzing.')
+		return
+
+	total_discovered = 0
+	for target_addr, target_domain in targets_to_probe:
+		logger.info(f'[VHost Fuzzer] Fuzzing virtual hosts on {target_addr} for {target_domain.name}...')
+		discovered_items = run_vhost_fuzz(
+			target_url=target_addr,
+			domain_name=target_domain.name,
+			wordlist=wordlist,
+			threads=threads,
+			timeout=timeout,
+			results_dir=results_dir
+		)
+
+		for item in discovered_items:
+			vhost_name = item['vhost']
+			status = item['status']
+			length = item['length']
+
+			sub, created = Subdomain.objects.get_or_create(
+				name=vhost_name,
+				target_domain=target_domain,
+				defaults={
+					'scan_history_id': self.scan_id,
+					'http_status': status,
+					'content_length': length,
+					'http_url': f'http://{vhost_name}',
+					'is_imported_subdomain': True,
+					'is_important': True,
+					'discovered_date': timezone.now()
+				}
+			)
+
+			if not created:
+				sub.is_important = True
+				sub.save()
+
+			if subscan:
+				subscan.subdomain_subscan_ids.add(sub)
+
+			total_discovered += 1
+
+			try:
+				msg = (
+					"🚨 *[reNgine VHost Discovered]*\n"
+					+ f"🎯 *Host:* `{target_addr}`\n"
+					+ f"🌐 *Discovered VHost:* `{vhost_name}`\n"
+					+ f"📊 *HTTP Status:* `{status}` | *Length:* `{length}` bytes\n"
+					+ f"📌 *Domain:* `{target_domain.name}`"
+				)
+				send_notif.delay(msg)
+			except Exception as e:
+				logger.warning(f'[VHost Fuzzer] Could not send notification: {e}')
+
+	logger.info(f'[VHost Fuzzer] Virtual host fuzzing completed. Discovered {total_discovered} virtual host(s).')

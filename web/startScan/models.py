@@ -362,9 +362,12 @@ class SubScan(models.Model):
 			'vulnerability_scan': 'Vulnerability Scan',
 			'screenshot': 'Screenshot',
 			'waf_detection': 'Waf Detection',
-			'osint': 'Open-Source Intelligence'
+			'osint': 'Open-Source Intelligence',
+			'vhost_fuzzing': 'Virtual Host Discovery',
+			'api_discovery': 'API Route Discovery',
+			'ssrf_audit': 'SSRF Vulnerability Audit'
 		}
-		return taskmap.get(self.type, 'Unknown')
+		return taskmap.get(self.type, self.type.replace('_', ' ').title() if self.type else 'Unknown')
 
 class EndPoint(models.Model):
 	id = models.AutoField(primary_key=True)

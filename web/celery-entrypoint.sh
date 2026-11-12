@@ -81,6 +81,13 @@ then
   wget https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/deepmagic.com-prefixes-top50000.txt -O /usr/src/wordlist/deepmagic.com-prefixes-top50000.txt
 fi
 
+# check if fast wordlist for vhost fuzzing exists
+if [ ! -f /usr/src/wordlist/subdomains-top5000.txt ];
+then
+  echo "Downloading SecLists top 5000 Subdomains Wordlist"
+  wget https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-5000.txt -O /usr/src/wordlist/subdomains-top5000.txt
+fi
+
 # clone Sublist3r
 if [ ! -d "/usr/src/github/Sublist3r" ]
 then

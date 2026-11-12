@@ -67,6 +67,18 @@ urlpatterns = [
         views.export_urls,
         name='export_http_urls'),
     path(
+        'export/burp_scope/<int:scan_id>',
+        views.export_burp_scope,
+        name='export_burp_scope'),
+    path(
+        'export/burp_sitemap/<int:scan_id>',
+        views.export_burp_sitemap,
+        name='export_burp_sitemap'),
+    path(
+        'export/postman/<int:scan_id>',
+        views.export_postman_collection,
+        name='export_postman_collection'),
+    path(
         'delete/scan/<int:id>',
         views.delete_scan,
         name='delete_scan'),

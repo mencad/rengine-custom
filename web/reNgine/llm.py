@@ -7,6 +7,27 @@ from langchain_community.llms import Ollama
 
 from dashboard.models import OllamaSettings
 
+# Google Gemini API configuration constants
+# Google provides an OpenAI-compatible endpoint for Gemini models.
+# API keys starting with "AIza" are detected as Gemini keys automatically.
+GEMINI_OPENAI_COMPATIBLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
+
+
+def _is_gemini_key(api_key):
+	"""Check if the given API key is a Google Gemini API key.
+
+	Google API keys typically start with 'AIza'. This helper function
+	is used to route requests to the Gemini endpoint instead of OpenAI.
+
+	Args:
+		api_key: The API key string to check.
+
+	Returns:
+		bool: True if the key is a Gemini key, False otherwise.
+	"""
+	return api_key and str(api_key).startswith("AIza")
+
 
 class LLMVulnerabilityReportGenerator:
 
@@ -52,9 +73,23 @@ class LLMVulnerabilityReportGenerator:
 				}
 			try:
 				prompt = re.sub(r'\t', '', VULNERABILITY_DESCRIPTION_SYSTEM_MESSAGE)
-				openai.api_key = openai_api_key
+
+				# Google Gemini API support via OpenAI-compatible endpoint.
+				# If the API key starts with "AIza", route to Gemini's endpoint
+				# and use the default Gemini model instead of the configured model.
+				if _is_gemini_key(openai_api_key):
+					self.logger.info('Detected Gemini API key, switching to Google Gemini endpoint')
+					openai.api_base = GEMINI_OPENAI_COMPATIBLE_BASE_URL
+					openai.api_key = str(openai_api_key)
+					model_to_use = GEMINI_DEFAULT_MODEL
+				else:
+					# Standard OpenAI endpoint (default behavior)
+					openai.api_base = "https://api.openai.com/v1"
+					openai.api_key = openai_api_key
+					model_to_use = self.model_name
+
 				gpt_response = openai.ChatCompletion.create(
-				model=self.model_name,
+				model=model_to_use,
 				messages=[
 						{'role': 'system', 'content': prompt},
 						{'role': 'user', 'content': description}
@@ -63,6 +98,7 @@ class LLMVulnerabilityReportGenerator:
 
 				response_content = gpt_response['choices'][0]['message']['content']
 			except Exception as e:
+				self.logger.error(f'LLM Vulnerability Report Generation failed: {str(e)}')
 				return {
 					'status': False,
 					'error': str(e)
@@ -118,9 +154,23 @@ class LLMAttackSuggestionGenerator:
 				}
 			try:
 				prompt = re.sub(r'\t', '', ATTACK_SUGGESTION_GPT_SYSTEM_PROMPT)
-				openai.api_key = openai_api_key
+
+				# Google Gemini API support via OpenAI-compatible endpoint.
+				# If the API key starts with "AIza", route to Gemini's endpoint
+				# and use the default Gemini model instead of the configured model.
+				if _is_gemini_key(openai_api_key):
+					self.logger.info('Detected Gemini API key, switching to Google Gemini endpoint')
+					openai.api_base = GEMINI_OPENAI_COMPATIBLE_BASE_URL
+					openai.api_key = str(openai_api_key)
+					model_to_use = GEMINI_DEFAULT_MODEL
+				else:
+					# Standard OpenAI endpoint (default behavior)
+					openai.api_base = "https://api.openai.com/v1"
+					openai.api_key = openai_api_key
+					model_to_use = self.model_name
+
 				gpt_response = openai.ChatCompletion.create(
-				model=self.model_name,
+				model=model_to_use,
 				messages=[
 						{'role': 'system', 'content': prompt},
 						{'role': 'user', 'content': user_input}
@@ -128,6 +178,7 @@ class LLMAttackSuggestionGenerator:
 				)
 				response_content = gpt_response['choices'][0]['message']['content']
 			except Exception as e:
+				self.logger.error(f'LLM Attack Suggestion Generation failed: {str(e)}')
 				return {
 					'status': False,
 					'error': str(e),
@@ -138,4 +189,3 @@ class LLMAttackSuggestionGenerator:
 			'description': response_content,
 			'input': user_input
 		}
-		

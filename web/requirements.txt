@@ -42,3 +42,5 @@ xmltodict==0.13.0
 django-environ==0.11.2
 plotly==5.23.0
 kaleido==0.2.1
+certstream>=1.12
+google-generativeai>=0.8.0

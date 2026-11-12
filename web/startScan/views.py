@@ -1,4 +1,7 @@
 import markdown
+import json
+import re
+import urllib.parse
 
 from celery import group
 from weasyprint import HTML, CSS
@@ -471,6 +474,151 @@ def export_urls(request, scan_id):
     response = HttpResponse(response_body, content_type='text/plain')
     response['Content-Disposition'] = (
         f'attachment; filename="urls_{domain_name}_{scan_start_date_str}.txt"'
+    )
+    return response
+
+
+def export_burp_scope(request, scan_id):
+    scan = get_object_or_404(ScanHistory, id=scan_id)
+    domain_name = scan.domain.name
+    scan_start_date_str = str(scan.start_scan_date.date())
+
+    escaped_domain = re.escape(domain_name)
+    include_rules = [
+        {
+            "enabled": True,
+            "file": "^/.*",
+            "host": f"^.*\\.{escaped_domain}$",
+            "protocol": "any"
+        },
+        {
+            "enabled": True,
+            "file": "^/.*",
+            "host": f"^{escaped_domain}$",
+            "protocol": "any"
+        }
+    ]
+
+    subdomains = Subdomain.objects.filter(scan_history=scan).values_list('name', flat=True).distinct()
+    for sub in subdomains:
+        if sub and not sub.endswith(domain_name):
+            escaped_sub = re.escape(sub)
+            include_rules.append({
+                "enabled": True,
+                "file": "^/.*",
+                "host": f"^{escaped_sub}$",
+                "protocol": "any"
+            })
+
+    burp_scope = {
+        "target": {
+            "scope": {
+                "advanced_mode": True,
+                "include": include_rules,
+                "exclude": []
+            }
+        }
+    }
+
+    response = HttpResponse(
+        json.dumps(burp_scope, indent=2),
+        content_type='application/json'
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="burp_scope_{domain_name}_{scan_start_date_str}.json"'
+    )
+    return response
+
+
+def export_burp_sitemap(request, scan_id):
+    scan = get_object_or_404(ScanHistory, id=scan_id)
+    domain_name = scan.domain.name
+    scan_start_date_str = str(scan.start_scan_date.date())
+
+    urls = set()
+    for sub in Subdomain.objects.filter(scan_history=scan):
+        if sub.http_url:
+            urls.add(sub.http_url.strip())
+    for ep in EndPoint.objects.filter(scan_history=scan):
+        if ep.http_url:
+            urls.add(ep.http_url.strip())
+
+    sorted_urls = sorted(list(urls))
+    response_body = "\n".join(sorted_urls) + ("\n" if sorted_urls else "")
+
+    response = HttpResponse(response_body, content_type='text/plain')
+    response['Content-Disposition'] = (
+        f'attachment; filename="burp_sitemap_{domain_name}_{scan_start_date_str}.txt"'
+    )
+    return response
+
+
+def export_postman_collection(request, scan_id):
+    scan = get_object_or_404(ScanHistory, id=scan_id)
+    domain_name = scan.domain.name
+    scan_start_date_str = str(scan.start_scan_date.date())
+
+    urls = set()
+    for ep in EndPoint.objects.filter(scan_history=scan):
+        if ep.http_url:
+            urls.add(ep.http_url.strip())
+    for sub in Subdomain.objects.filter(scan_history=scan):
+        if sub.http_url:
+            urls.add(sub.http_url.strip())
+
+    items = []
+    for url_str in sorted(list(urls)):
+        try:
+            parsed = urllib.parse.urlparse(url_str)
+            protocol = parsed.scheme or 'http'
+            netloc = parsed.netloc
+            host_parts = netloc.split(':')[0].split('.')
+            path_parts = [p for p in parsed.path.split('/') if p]
+
+            query_items = []
+            if parsed.query:
+                query_params = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+                for qk, qv in query_params:
+                    query_items.append({
+                        "key": qk,
+                        "value": qv
+                    })
+
+            item = {
+                "name": f"{parsed.path or '/'} [{netloc}]",
+                "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                        "raw": url_str,
+                        "protocol": protocol,
+                        "host": host_parts,
+                        "path": path_parts,
+                        "query": query_items
+                    }
+                },
+                "response": []
+            }
+            items.append(item)
+        except Exception:
+            continue
+
+    postman_data = {
+        "info": {
+            "_postman_id": f"rengine-scan-{scan_id}",
+            "name": f"reNgine - {domain_name} ({scan_start_date_str})",
+            "description": f"Exported endpoints from reNgine scan #{scan_id} on {domain_name}",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+        },
+        "item": items
+    }
+
+    response = HttpResponse(
+        json.dumps(postman_data, indent=2),
+        content_type='application/json'
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="postman_collection_{domain_name}_{scan_start_date_str}.json"'
     )
     return response
 
