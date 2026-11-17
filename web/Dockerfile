@@ -92,6 +92,18 @@ RUN set -e; curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s --
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN pip3 install maturin
 
+# Install x8 for hidden parameter discovery
+ARG X8_VERSION=v4.3.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && if [ "${ARCH}" = "amd64" ]; then \
+      wget -q https://github.com/Sh1Yo/x8/releases/download/${X8_VERSION}/x86_64-linux-x8.gz -O /tmp/x8.gz \
+      && gzip -d /tmp/x8.gz \
+      && mv /tmp/x8 /usr/local/bin/x8 \
+      && chmod +x /usr/local/bin/x8; \
+    else \
+      cargo install x8 --root /usr/local; \
+    fi
+
 # Make directory for app
 WORKDIR /usr/src/app
 

@@ -107,6 +107,13 @@ fetch_url: {
   'threads': 30,
   # 'exclude_subdomains': false
 }
+param_discovery: {
+  'enable': true,
+  'tool': 'x8',
+  'max_endpoints': 30,
+  'threads': 10,
+  'wordlist': '/usr/src/wordlist/parameters.txt'
+}
 vulnerability_scan: {
   'run_nuclei': true,
   'run_dalfox': false,

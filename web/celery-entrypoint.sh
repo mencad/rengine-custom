@@ -88,6 +88,13 @@ then
   wget https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-5000.txt -O /usr/src/wordlist/subdomains-top5000.txt
 fi
 
+# check if burp parameter names wordlist for x8 exists
+if [ ! -f /usr/src/wordlist/parameters.txt ];
+then
+  echo "Downloading SecLists Burp Parameter Names Wordlist for x8"
+  wget https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt -O /usr/src/wordlist/parameters.txt
+fi
+
 # clone Sublist3r
 if [ ! -d "/usr/src/github/Sublist3r" ]
 then

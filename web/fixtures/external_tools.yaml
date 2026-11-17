@@ -329,3 +329,20 @@
     is_github_cloned: false
     github_clone_path: null
     subdomain_gathering_command: null
+- model: scanEngine.installedexternaltool
+  pk: 20
+  fields:
+    logo_url: null
+    name: x8
+    description: High-performance hidden parameter discovery tool written in Rust.
+    github_url: https://github.com/Sh1Yo/x8
+    license_url: https://github.com/Sh1Yo/x8/blob/master/LICENSE
+    version_lookup_command: x8 -V
+    update_command: cargo install x8
+    install_command: cargo install x8
+    version_match_regex: '[vV]*(\d+\.)?(\d+\.)?(\*|\d+)'
+    is_default: true
+    is_subdomain_gathering: false
+    is_github_cloned: false
+    github_clone_path: null
+    subdomain_gathering_command: null

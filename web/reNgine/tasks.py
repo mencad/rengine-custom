@@ -183,10 +183,10 @@ def initiate_scan(
 
 
 		# Build Celery tasks, crafted according to the dependency graph below:
-		# subdomain_discovery --> port_scan --> waf_detection --> fetch_url --> dir_file_fuzz
-		# osint								             	                    vulnerability_scan
-		# osint								             	                    dalfox xss scan
-		#						 	   		         	  	                    screenshot
+		# subdomain_discovery --> port_scan --> waf_detection --> fetch_url --> param_discovery --> dir_file_fuzz
+		# osint								             	                                         vulnerability_scan
+		# osint								             	                                         dalfox xss scan
+		#						 	   		         	  	                                         screenshot
 		workflow = chain(
 			group(
 				subdomain_discovery.si(ctx=ctx, description='Subdomain discovery'),
@@ -195,6 +195,7 @@ def initiate_scan(
 			port_scan.si(ctx=ctx, description='Port scan'),
 			waf_detection.si(ctx=ctx, description='WAF detection'),
 			fetch_url.si(ctx=ctx, description='Fetch URL'),
+			param_discovery.si(ctx=ctx, description='Parameter discovery'),
 			group(
 				dir_file_fuzz.si(ctx=ctx, description='Directories & files fuzz'),
 				vulnerability_scan.si(ctx=ctx, description='Vulnerability scan'),
@@ -4970,3 +4971,95 @@ def vhost_fuzzing(self, ctx={}, description=None):
 				logger.warning(f'[VHost Fuzzer] Could not send notification: {e}')
 
 	logger.info(f'[VHost Fuzzer] Virtual host fuzzing completed. Discovered {total_discovered} virtual host(s).')
+
+
+@app.task(name='param_discovery', queue='main_scan_queue', base=RengineTask, bind=True)
+def param_discovery(self, urls=[], ctx={}, description=None):
+	"""Discover hidden parameters using x8."""
+	from reNgine.param_fuzzer import run_x8_pipeline
+	from startScan.models import EndPoint, Subdomain, SubScan, Waf
+	from django.utils import timezone
+	from urllib.parse import urlparse
+
+	logger.info('[x8 Param Fuzzer] Starting Parameter Discovery task...')
+	config = self.yaml_configuration.get('param_discovery') or {}
+	max_endpoints = config.get('max_endpoints', 30)
+	threads = config.get('threads', 10)
+	custom_wordlist = config.get('wordlist', None)
+	custom_headers = self.yaml_configuration.get(CUSTOM_HEADERS, [])
+	proxy = get_random_proxy()
+
+	subscan_id = ctx.get('subscan_id') or getattr(self, 'subscan_id', None)
+	subscan = getattr(self, 'subscan', None) or (SubScan.objects.filter(pk=subscan_id).first() if subscan_id else None)
+	subdomain_id = ctx.get('subdomain_id') or getattr(self, 'subdomain_id', None)
+
+	# Candidate URLs: either passed in, or from subscan subdomain, or from scan's discovered endpoints
+	if not urls:
+		if subdomain_id:
+			subdomain = Subdomain.objects.filter(pk=subdomain_id).first()
+			if subdomain:
+				urls = [subdomain.http_url] if subdomain.http_url else [f'http://{subdomain.name}']
+		elif self.scan_id:
+			urls = list(
+				EndPoint.objects.filter(scan_history_id=self.scan_id)
+				.exclude(http_url__contains='?')
+				.values_list('http_url', flat=True)[:max_endpoints]
+			)
+			if not urls:
+				urls = get_http_urls(is_alive=True, ignore_files=True, ctx=ctx)[:max_endpoints]
+
+	if not urls:
+		logger.info('[x8 Param Fuzzer] No candidate URLs found for parameter discovery.')
+		return
+
+	# Smart Auto-Throttling if WAF is detected
+	waf_marker_file = f'{self.results_dir}/waf_detected.txt'
+	has_waf = os.path.isfile(waf_marker_file) or (self.scan and Waf.objects.filter(subdomain__scan_history=self.scan).exists())
+	if has_waf:
+		logger.warning('🛡️ WAF detected! Throttling x8 parameter fuzzer to avoid IP ban.')
+		threads = min(threads, 5)
+
+	discovered_urls = run_x8_pipeline(
+		target_urls=urls,
+		wordlist=custom_wordlist,
+		custom_headers=custom_headers,
+		proxy=proxy,
+		threads=threads,
+		results_dir=self.results_dir
+	)
+
+	total_added = 0
+	for disc_url in discovered_urls:
+		parsed = urlparse(disc_url)
+		subdomain_name = parsed.netloc.split(':')[0]
+		subdomain_obj = None
+		if self.scan:
+			subdomain_obj = Subdomain.objects.filter(scan_history=self.scan, name=subdomain_name).first()
+
+		ep, created = EndPoint.objects.get_or_create(
+			http_url=disc_url,
+			scan_history=self.scan,
+			target_domain=self.domain,
+			defaults={
+				'subdomain': subdomain_obj,
+				'discovered_date': timezone.now(),
+				'page_title': 'Discovered Hidden Parameter',
+				'is_crawled': True
+			}
+		)
+		if subscan:
+			subscan.endpoint_subscan_ids.add(ep)
+		total_added += 1
+
+		try:
+			domain_label = self.domain.name if self.domain else subdomain_name
+			msg = (
+				"🎯 *[reNgine Hidden Parameters Discovered]*\n"
+				+ f"🌐 *URL:* `{disc_url}`\n"
+				+ f"📌 *Target:* `{domain_label}`"
+			)
+			send_notif.delay(msg)
+		except Exception as notif_err:
+			logger.warning(f'[x8 Param Fuzzer] Notification error: {notif_err}')
+
+	logger.info(f'[x8 Param Fuzzer] Completed. Discovered {total_added} parameter-enriched endpoint(s).')

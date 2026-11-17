@@ -989,7 +989,7 @@ class FetchSubscanResults(APIView):
 			vulns_in_subscan = Vulnerability.objects.filter(vuln_subscan_ids__in=subscan)
 			subscan_results = VulnerabilitySerializer(vulns_in_subscan, many=True).data
 
-		elif task_name == 'fetch_url':
+		elif task_name in ['fetch_url', 'api_discovery', 'param_discovery']:
 			endpoints_in_subscan = EndPoint.objects.filter(endpoint_subscan_ids__in=subscan)
 			subscan_results = EndpointSerializer(endpoints_in_subscan, many=True).data
 
