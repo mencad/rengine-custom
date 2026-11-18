@@ -1,4 +1,5 @@
 
+import os
 import openai
 import re
 from reNgine.common_func import get_open_ai_key, parse_llm_vulnerability_report
@@ -11,7 +12,7 @@ from dashboard.models import OllamaSettings
 # Google provides an OpenAI-compatible endpoint for Gemini models.
 # API keys starting with "AIza" are detected as Gemini keys automatically.
 GEMINI_OPENAI_COMPATIBLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
+GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 
 def _is_gemini_key(api_key):
@@ -81,7 +82,7 @@ class LLMVulnerabilityReportGenerator:
 					self.logger.info('Detected Gemini API key, switching to Google Gemini endpoint')
 					openai.api_base = GEMINI_OPENAI_COMPATIBLE_BASE_URL
 					openai.api_key = str(openai_api_key)
-					model_to_use = GEMINI_DEFAULT_MODEL
+					model_to_use = os.getenv("GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
 				else:
 					# Standard OpenAI endpoint (default behavior)
 					openai.api_base = "https://api.openai.com/v1"
@@ -162,7 +163,7 @@ class LLMAttackSuggestionGenerator:
 					self.logger.info('Detected Gemini API key, switching to Google Gemini endpoint')
 					openai.api_base = GEMINI_OPENAI_COMPATIBLE_BASE_URL
 					openai.api_key = str(openai_api_key)
-					model_to_use = GEMINI_DEFAULT_MODEL
+					model_to_use = os.getenv("GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
 				else:
 					# Standard OpenAI endpoint (default behavior)
 					openai.api_base = "https://api.openai.com/v1"

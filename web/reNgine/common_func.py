@@ -593,8 +593,21 @@ def send_telegram_message(message):
 		return
 	telegram_bot_token = notif.telegram_bot_token
 	telegram_bot_chat_id = notif.telegram_bot_chat_id
-	send_url = f'https://api.telegram.org/bot{telegram_bot_token}/sendMessage?chat_id={telegram_bot_chat_id}&parse_mode=Markdown&text={message}'
-	requests.get(send_url)
+	api_url = f'https://api.telegram.org/bot{telegram_bot_token}/sendMessage'
+	payload = {
+		'chat_id': telegram_bot_chat_id,
+		'text': message,
+		'parse_mode': 'Markdown'
+	}
+	try:
+		resp = requests.post(api_url, data=payload, timeout=10)
+		if resp.status_code == 400:
+			payload.pop('parse_mode', None)
+			resp = requests.post(api_url, data=payload, timeout=10)
+		if not resp.ok:
+			logger.error(f'Failed to send Telegram message ({resp.status_code}): {resp.text}')
+	except Exception as e:
+		logger.error(f'Exception while sending Telegram message: {e}')
 
 
 def send_slack_message(message):

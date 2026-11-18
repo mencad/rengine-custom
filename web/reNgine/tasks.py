@@ -4938,6 +4938,7 @@ def vhost_fuzzing(self, ctx={}, description=None):
 		return
 
 	total_discovered = 0
+	all_discovered_vhosts = []
 	for target_addr, target_domain in targets_to_probe:
 		logger.info(f'[VHost Fuzzer] Fuzzing virtual hosts on {target_addr} for {target_domain.name}...')
 		discovered_items = run_vhost_fuzz(
@@ -4976,18 +4977,26 @@ def vhost_fuzzing(self, ctx={}, description=None):
 				subscan.subdomain_subscan_ids.add(sub)
 
 			total_discovered += 1
+			all_discovered_vhosts.append((target_addr, vhost_name, status))
 
-			try:
-				msg = (
-					"🚨 *[reNgine VHost Discovered]*\n"
-					+ f"🎯 *Host:* `{target_addr}`\n"
-					+ f"🌐 *Discovered VHost:* `{vhost_name}`\n"
-					+ f"📊 *HTTP Status:* `{status}` | *Length:* `{length}` bytes\n"
-					+ f"📌 *Domain:* `{target_domain.name}`"
-				)
-				send_notif.delay(msg)
-			except Exception as e:
-				logger.warning(f'[VHost Fuzzer] Could not send notification: {e}')
+	if all_discovered_vhosts:
+		try:
+			items_text = "\n".join(
+				f"• `{vhost}` [{status}] on `{target}`"
+				for target, vhost, status in all_discovered_vhosts[:20]
+			)
+			if len(all_discovered_vhosts) > 20:
+				items_text += f"\n...and {len(all_discovered_vhosts) - 20} more."
+			domain_label = self.domain.name if self.domain else "Target"
+			msg = (
+				f"🚨 *[reNgine VHost Discovery Summary]*\n"
+				f"📌 *Domain:* `{domain_label}`\n"
+				f"📊 *Discovered:* {len(all_discovered_vhosts)} virtual host(s)\n\n"
+				f"{items_text}"
+			)
+			send_notif.delay(msg)
+		except Exception as e:
+			logger.warning(f'[VHost Fuzzer] Could not send summary notification: {e}')
 
 	logger.info(f'[VHost Fuzzer] Virtual host fuzzing completed. Discovered {total_discovered} virtual host(s).')
 
@@ -5069,12 +5078,17 @@ def param_discovery(self, urls=[], ctx={}, description=None):
 			subscan.endpoint_subscan_ids.add(ep)
 		total_added += 1
 
+	if discovered_urls:
 		try:
-			domain_label = self.domain.name if self.domain else subdomain_name
+			domain_label = self.domain.name if self.domain else "Target"
+			items_text = "\n".join(f"• `{u}`" for u in discovered_urls[:20])
+			if len(discovered_urls) > 20:
+				items_text += f"\n...and {len(discovered_urls) - 20} more."
 			msg = (
-				"🎯 *[reNgine Hidden Parameters Discovered]*\n"
-				+ f"🌐 *URL:* `{disc_url}`\n"
-				+ f"📌 *Target:* `{domain_label}`"
+				f"🎯 *[reNgine Hidden Parameters Summary]*\n"
+				f"📌 *Target:* `{domain_label}`\n"
+				f"📊 *Discovered:* {len(discovered_urls)} parameter-enriched endpoint(s)\n\n"
+				f"{items_text}"
 			)
 			send_notif.delay(msg)
 		except Exception as notif_err:
