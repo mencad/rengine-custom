@@ -158,27 +158,30 @@ def initiate_scan(
 
 		# If enable_http_crawl is set, create an initial root HTTP endpoint so that
 		# HTTP crawling can start somewhere
-		http_url = f'{domain.name}{starting_point_path}' if starting_point_path else domain.name
-		endpoint, _ = save_endpoint(
-			http_url,
-			ctx=ctx,
-			crawl=enable_http_crawl,
-			is_default=True,
-			subdomain=subdomain
-		)
-		if endpoint and endpoint.is_alive:
-			# TODO: add `root_endpoint` property to subdomain and simply do
-			# subdomain.root_endpoint = endpoint instead
-			logger.warning(f'Found subdomain root HTTP URL {endpoint.http_url}')
-			subdomain.http_url = endpoint.http_url
-			subdomain.http_status = endpoint.http_status
-			subdomain.response_time = endpoint.response_time
-			subdomain.page_title = endpoint.page_title
-			subdomain.content_type = endpoint.content_type
-			subdomain.content_length = endpoint.content_length
-			for tech in endpoint.techs.all():
-				subdomain.technologies.add(tech)
-			subdomain.save()
+		try:
+			http_url = f'{domain.name}{starting_point_path}' if starting_point_path else domain.name
+			endpoint, _ = save_endpoint(
+				http_url,
+				ctx=ctx,
+				crawl=enable_http_crawl,
+				is_default=True,
+				subdomain=subdomain
+			)
+			if endpoint and endpoint.is_alive:
+				# TODO: add `root_endpoint` property to subdomain and simply do
+				# subdomain.root_endpoint = endpoint instead
+				logger.warning(f'Found subdomain root HTTP URL {endpoint.http_url}')
+				subdomain.http_url = endpoint.http_url
+				subdomain.http_status = endpoint.http_status
+				subdomain.response_time = endpoint.response_time
+				subdomain.page_title = endpoint.page_title
+				subdomain.content_type = endpoint.content_type
+				subdomain.content_length = endpoint.content_length
+				for tech in endpoint.techs.all():
+					subdomain.technologies.add(tech)
+				subdomain.save()
+		except Exception as e:
+			logger.warning(f'Could not create initial root endpoint: {e}')
 
 
 		# Build Celery tasks, crafted according to the dependency graph below:
