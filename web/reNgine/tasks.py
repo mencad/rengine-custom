@@ -7,7 +7,6 @@ import time
 import validators
 import xmltodict
 import yaml
-import tldextract
 import concurrent.futures
 import base64
 
@@ -282,7 +281,12 @@ def initiate_subscan(
 	os.makedirs(results_dir, exist_ok=True)
 
 	# Run task
-	method = globals().get(scan_type)
+	subscan_task_aliases = {
+		'api_discovery': 'kiterunner_scan',
+		'ssrf_audit': 'ssrf_oob_audit',
+	}
+	task_func_name = subscan_task_aliases.get(scan_type, scan_type)
+	method = globals().get(task_func_name)
 	if not method:
 		logger.warning(f'Task {scan_type} is not supported by reNgine. Skipping')
 		return
@@ -1646,6 +1650,24 @@ def waf_detection(self, ctx={}, description=None):
 	return wafs
 
 
+def scan_has_waf(task) -> bool:
+	"""Check if WAF was detected for this scan (via marker file or database lookup)."""
+	try:
+		waf_marker_file = f'{task.results_dir}/waf_detected.txt'
+		if os.path.isfile(waf_marker_file):
+			return True
+	except Exception as e:
+		logger.warning(f'Error checking WAF marker file: {e}')
+
+	try:
+		if getattr(task, 'scan', None):
+			return Waf.objects.filter(waf__scan_history=task.scan).exists()
+	except Exception as e:
+		logger.warning(f'Error checking Waf in database: {e}')
+
+	return False
+
+
 @app.task(name='dir_file_fuzz', queue='main_scan_queue', base=RengineTask, bind=True)
 def dir_file_fuzz(self, ctx={}, description=None):
 	"""Perform directory scan, and currently uses `ffuf` as a default tool.
@@ -1683,8 +1705,7 @@ def dir_file_fuzz(self, ctx={}, description=None):
 	wordlist_name = config.get(WORDLIST, 'dicc')
 
 	# Smart Auto-Throttling if WAF is detected
-	waf_marker_file = f'{self.results_dir}/waf_detected.txt'
-	has_waf = os.path.isfile(waf_marker_file) or (self.scan and Waf.objects.filter(subdomain__scan_history=self.scan).exists())
+	has_waf = scan_has_waf(self)
 	if has_waf:
 		logger.warning('🛡️ WAF detected on target! Applying smart throttling to ffuf to prevent IP ban.')
 		threads = min(threads, 5) if threads else 5
@@ -2435,8 +2456,7 @@ def nuclei_scan(self, urls=[], ctx={}, description=None):
 	rate_limit = config.get(RATE_LIMIT) or self.yaml_configuration.get(RATE_LIMIT, DEFAULT_RATE_LIMIT)
 
 	# Smart Auto-Throttling if WAF is detected
-	waf_marker_file = f'{self.results_dir}/waf_detected.txt'
-	has_waf = os.path.isfile(waf_marker_file) or (self.scan and Waf.objects.filter(subdomain__scan_history=self.scan).exists())
+	has_waf = scan_has_waf(self)
 	if has_waf:
 		logger.warning('🛡️ WAF detected on target! Applying smart throttling to Nuclei concurrency & rate-limit.')
 		concurrency = min(concurrency, 5) if concurrency else 5
@@ -2590,8 +2610,7 @@ def dalfox_xss_scan(self, urls=[], ctx={}, description=None):
 	threads = dalfox_config.get(THREADS) or self.yaml_configuration.get(THREADS, DEFAULT_THREADS)
 
 	# Smart Auto-Throttling & Evasion if WAF is detected
-	waf_marker_file = f'{self.results_dir}/waf_detected.txt'
-	has_waf = os.path.isfile(waf_marker_file) or (self.scan and Waf.objects.filter(subdomain__scan_history=self.scan).exists())
+	has_waf = scan_has_waf(self)
 	if has_waf:
 		logger.warning('🛡️ WAF detected on target! Enabling --waf-evasion and throttling dalfox workers.')
 		is_waf_evasion = True
@@ -5013,8 +5032,7 @@ def param_discovery(self, urls=[], ctx={}, description=None):
 		return
 
 	# Smart Auto-Throttling if WAF is detected
-	waf_marker_file = f'{self.results_dir}/waf_detected.txt'
-	has_waf = os.path.isfile(waf_marker_file) or (self.scan and Waf.objects.filter(subdomain__scan_history=self.scan).exists())
+	has_waf = scan_has_waf(self)
 	if has_waf:
 		logger.warning('🛡️ WAF detected! Throttling x8 parameter fuzzer to avoid IP ban.')
 		threads = min(threads, 5)

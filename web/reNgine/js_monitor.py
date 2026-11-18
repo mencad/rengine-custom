@@ -9,8 +9,7 @@ import re
 import hashlib
 import logging
 import requests
-from datetime import datetime
-from typing import Dict, List, Set, Tuple
+from typing import Dict, Set, Tuple
 
 logger = logging.getLogger('reNgine')
 
@@ -101,7 +100,7 @@ def notify_js_change(target_name: str, diff_result: Dict):
     endpoints = diff_result.get("endpoints", [])
 
     msg_lines = [
-        f"📄 <b>[JS Diff Alert] JavaScript File Changed!</b>",
+        "📄 <b>[JS Diff Alert] JavaScript File Changed!</b>",
         f"🎯 <b>Target:</b> <code>{target_name}</code>",
         f"🔗 <b>File:</b> <code>{url}</code>",
         f"🔑 <b>New Hash:</b> <code>{diff_result['new_hash'][:16]}...</code>\n",

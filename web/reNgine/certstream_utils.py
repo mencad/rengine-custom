@@ -4,7 +4,6 @@ Provides domain extraction, wildcard cleaning, and matching
 against reNgine monitored target domains.
 """
 
-import re
 import logging
 from typing import List, Dict, Set, Optional
 

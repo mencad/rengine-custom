@@ -7,7 +7,6 @@ This module integrates x8 into reNgine's Celery scan pipeline and SubScan workfl
 """
 
 import os
-import re
 import shutil
 import logging
 import subprocess

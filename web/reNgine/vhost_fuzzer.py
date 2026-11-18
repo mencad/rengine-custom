@@ -9,7 +9,6 @@ import os
 import json
 import subprocess
 import logging
-from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +128,7 @@ def run_vhost_fuzz(
 
     logger.info(f'[VHost Fuzzer] Launching FFUF on {formatted_target} with domain {domain_name}...')
     try:
-        proc = subprocess.run(
+        subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

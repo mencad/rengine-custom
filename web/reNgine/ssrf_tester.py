@@ -5,12 +5,10 @@ with unique OOB callback domains (Interactsh / Burp Collaborator), audits endpoi
 and dispatches instant Telegram alerts and registers High/Critical vulnerabilities in reNgine.
 """
 
-import re
-import uuid
 import logging
 import requests
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple
 
 logger = logging.getLogger('reNgine')
 

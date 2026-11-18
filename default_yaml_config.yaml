@@ -81,7 +81,7 @@ dir_file_fuzz: {
   'wordlist_name': 'dicc'
 }
 api_discovery: {
-  'run_kiteruner': true,
+  'run_kiterunner': true,
   'threads': 30,
   'only_api_targets': true,
   'wordlist': '/usr/src/wordlist/kiterunner/routes-small.kite'
