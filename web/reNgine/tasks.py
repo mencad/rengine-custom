@@ -195,11 +195,9 @@ def initiate_scan(
 			waf_detection.si(ctx=ctx, description='WAF detection'),
 			fetch_url.si(ctx=ctx, description='Fetch URL'),
 			param_discovery.si(ctx=ctx, description='Parameter discovery'),
-			group(
-				dir_file_fuzz.si(ctx=ctx, description='Directories & files fuzz'),
-				vulnerability_scan.si(ctx=ctx, description='Vulnerability scan'),
-				screenshot.si(ctx=ctx, description='Screenshot')
-			)
+			dir_file_fuzz.si(ctx=ctx, description='Directories & files fuzz'),
+			vulnerability_scan.si(ctx=ctx, description='Vulnerability scan'),
+			screenshot.si(ctx=ctx, description='Screenshot')
 		)
 
 		# Build callback

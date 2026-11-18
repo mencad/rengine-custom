@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eo pipefail
 
 usageFunction()
 {
@@ -10,8 +11,26 @@ usageFunction()
   exit 1
 }
 
+# Root check must happen first
+if [ "$EUID" -ne 0 ]; then
+  tput setaf 1; echo "Error installing reNgine, Please run this script as root!"
+  tput setaf 1; echo "Example: sudo ./install.sh"
+  exit 1
+fi
+
 tput setaf 2;
 cat web/art/reNgine.txt
+
+# Ensure .env exists
+if [ ! -f .env ]; then
+  if [ -f .env.sample ]; then
+    tput setaf 3; echo ".env file not found. Creating from .env.sample..."
+    cp .env.sample .env
+  else
+    tput setaf 1; echo "Error: .env or .env.sample file not found. Please provide .env before installing."
+    exit 1
+  fi
+fi
 
 tput setaf 1; echo "Before running this script, please make sure Docker is running and you have made changes to .env file."
 tput setaf 2; echo "Changing the postgres username & password from .env is highly recommended."
@@ -27,7 +46,7 @@ while getopts nh opt; do
    esac
 done
 
-if [ $isNonInteractive = false ]; then
+if [ "$isNonInteractive" = false ]; then
     read -p "Are you sure, you made changes to .env file (y/n)? " answer
     case ${answer:0:1} in
         y|Y|yes|YES|Yes )
@@ -53,14 +72,6 @@ tput setaf 4;
 echo "Installing reNgine and its dependencies"
 
 echo " "
-if [ "$EUID" -ne 0 ]
-  then
-  tput setaf 1; echo "Error installing reNgine, Please run this script as root!"
-  tput setaf 1; echo "Example: sudo ./install.sh"
-  exit
-fi
-
-echo " "
 tput setaf 4;
 echo "#########################################################################"
 echo "Installing curl..."
@@ -68,7 +79,7 @@ echo "#########################################################################"
 if [ -x "$(command -v curl)" ]; then
   tput setaf 2; echo "CURL already installed, skipping."
 else
-  sudo apt update && sudo apt install curl -y
+  apt-get update && apt-get install -y curl
   tput setaf 2; echo "CURL installed!!!"
 fi
 
@@ -90,12 +101,18 @@ tput setaf 4;
 echo "#########################################################################"
 echo "Installing Docker Compose"
 echo "#########################################################################"
-if [ -x "$(command -v docker compose)" ]; then
+if docker compose version >/dev/null 2>&1 || docker-compose version >/dev/null 2>&1; then
   tput setaf 2; echo "Docker Compose already installed, skipping."
 else
-  curl -L "https://github.com/docker/compose/releases/download/v2.5.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  chmod +x /usr/local/bin/docker-compose
-  ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+  if [ -x "$(command -v apt-get)" ]; then
+    apt-get update && apt-get install -y docker-compose-plugin || true
+  fi
+  if ! (docker compose version >/dev/null 2>&1 || docker-compose version >/dev/null 2>&1); then
+    COMPOSE_VERSION="v2.29.7"
+    curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+  fi
   tput setaf 2; echo "Docker Compose installed!!!"
 fi
 
@@ -108,7 +125,7 @@ echo "#########################################################################"
 if [ -x "$(command -v make)" ]; then
   tput setaf 2; echo "make already installed, skipping."
 else
-  apt install make
+  apt-get install -y make
 fi
 
 echo " "
@@ -150,4 +167,5 @@ if [ "${failed}" -eq 0 ]; then
   echo "In case you have unapplied migrations (see above in red), run 'make migrate'"
 else
   tput setaf 1 && printf "\n%s\n" "reNgine installation failed!!"
+  exit 1
 fi

@@ -241,33 +241,33 @@ fi
 
 # API shared task worker
 if [ "$DEBUG" == "1" ]; then
-    commands+="watchmedo auto-restart --recursive --pattern=\"*.py\" --directory=\"/usr/src/app/api/\" -- celery -A api.shared_api_tasks worker --pool=gevent --optimization=fair --concurrency=30 --loglevel=$loglevel -Q api_queue -n api_worker &"$'\n'
+    commands+="watchmedo auto-restart --recursive --pattern=\"*.py\" --directory=\"/usr/src/app/api/\" -- celery -A api.shared_api_tasks worker --pool=gevent --optimization=fair --concurrency=10 --loglevel=$loglevel -Q api_queue -n api_worker &"$'\n'
 else
-    commands+="celery -A api.shared_api_tasks worker --pool=gevent --concurrency=30 --optimization=fair --loglevel=$loglevel -Q api_queue -n api_worker &"$'\n'
+    commands+="celery -A api.shared_api_tasks worker --pool=gevent --concurrency=10 --optimization=fair --loglevel=$loglevel -Q api_queue -n api_worker &"$'\n'
 fi
 
 # worker format: "queue_name:concurrency:worker_name"
 workers=(
-    "initiate_scan_queue:30:initiate_scan_worker"
-    "subscan_queue:30:subscan_worker"
-    "report_queue:20:report_worker"
-    "send_notif_queue:10:send_notif_worker"
-    "send_task_notif_queue:10:send_task_notif_worker"
+    "initiate_scan_queue:10:initiate_scan_worker"
+    "subscan_queue:10:subscan_worker"
+    "report_queue:10:report_worker"
+    "send_notif_queue:5:send_notif_worker"
+    "send_task_notif_queue:5:send_task_notif_worker"
     "send_file_to_discord_queue:5:send_file_to_discord_worker"
     "send_hackerone_report_queue:5:send_hackerone_report_worker"
-    "parse_nmap_results_queue:10:parse_nmap_results_worker"
-    "geo_localize_queue:20:geo_localize_worker"
-    "query_whois_queue:10:query_whois_worker"
-    "remove_duplicate_endpoints_queue:30:remove_duplicate_endpoints_worker"
-    "run_command_queue:50:run_command_worker"
-    "query_reverse_whois_queue:10:query_reverse_whois_worker"
-    "query_ip_history_queue:10:query_ip_history_worker"
-    "llm_queue:30:llm_worker"
-    "dorking_queue:10:dorking_worker"
-    "osint_discovery_queue:10:osint_discovery_worker"
-    "h8mail_queue:10:h8mail_worker"
-    "theHarvester_queue:10:theHarvester_worker"
-    "send_scan_notif_queue:10:send_scan_notif_worker"
+    "parse_nmap_results_queue:5:parse_nmap_results_worker"
+    "geo_localize_queue:10:geo_localize_worker"
+    "query_whois_queue:5:query_whois_worker"
+    "remove_duplicate_endpoints_queue:15:remove_duplicate_endpoints_worker"
+    "run_command_queue:20:run_command_worker"
+    "query_reverse_whois_queue:5:query_reverse_whois_worker"
+    "query_ip_history_queue:5:query_ip_history_worker"
+    "llm_queue:10:llm_worker"
+    "dorking_queue:5:dorking_worker"
+    "osint_discovery_queue:5:osint_discovery_worker"
+    "h8mail_queue:5:h8mail_worker"
+    "theHarvester_queue:5:theHarvester_worker"
+    "send_scan_notif_queue:5:send_scan_notif_worker"
 )
 
 for worker in "${workers[@]}"; do

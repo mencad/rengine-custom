@@ -173,7 +173,7 @@ USE_TZ = True
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = '/usr/src/scan_results/'
-FILE_UPLOAD_MAX_MEMORY_SIZE = 100000000
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880
 FILE_UPLOAD_PERMISSIONS = 0o644
 STATIC_URL = '/staticfiles/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
@@ -332,7 +332,7 @@ LOGGING = {
 '''
 File upload settings
 '''
-DATA_UPLOAD_MAX_NUMBER_FIELDS = None
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 
 '''
     Caching Settings
