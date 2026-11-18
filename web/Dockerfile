@@ -57,7 +57,9 @@ RUN apt install -y --no-install-recommends \
 RUN add-apt-repository ppa:mozillateam/ppa
 
 RUN ARCH=$(dpkg --print-architecture) \ 
-    && curl -L https://go.dev/dl/go${GOVERSION}.linux-${ARCH}.tar.gz | tar -xzC /usr/local
+    && (curl -fsSL https://mirrors.aliyun.com/golang/go${GOVERSION}.linux-${ARCH}.tar.gz || \
+        curl -fsSL https://dl.google.com/go/go${GOVERSION}.linux-${ARCH}.tar.gz || \
+        curl -fsSL https://go.dev/dl/go${GOVERSION}.linux-${ARCH}.tar.gz) | tar -xzC /usr/local
 
 RUN ARCH=$(dpkg --print-architecture) \ 
     && if [ "${ARCH}" = "arm64" ]; then \
