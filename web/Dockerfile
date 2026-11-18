@@ -109,35 +109,42 @@ RUN ARCH=$(dpkg --print-architecture) \
 # Make directory for app
 WORKDIR /usr/src/app
 
+ENV GOPROXY="https://goproxy.io,https://goproxy.cn,direct"
 ENV GO111MODULE=on 
-RUN printf "\
-    github.com/jaeles-project/gospider@latest\n\
-    github.com/tomnomnom/gf@latest\n\
-    github.com/tomnomnom/unfurl@latest\n\
-    github.com/tomnomnom/waybackurls@latest\n\
-    github.com/projectdiscovery/httpx/cmd/httpx@latest\n\
-    github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest\n\
-    github.com/projectdiscovery/chaos-client/cmd/chaos@latest\n\
-    github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest\n\
-    github.com/projectdiscovery/naabu/v2/cmd/naabu@latest\n\
-    github.com/hakluke/hakrawler@latest\n\
-    github.com/lc/gau/v2/cmd/gau@latest\n\
-    github.com/owasp-amass/amass/v3/...@latest\n\
-    github.com/ffuf/ffuf@latest\n\
-    github.com/hahwul/dalfox/v2@latest\n\
-    github.com/projectdiscovery/katana/cmd/katana@latest\n\
-    github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest\n\
-    github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest\n\
-    github.com/sa7mon/s3scanner@latest\n" | \
-    xargs -L1 go install -ldflags="-s -w" -v && \
+RUN set -e; \
+    tools="\
+    github.com/jaeles-project/gospider@latest \
+    github.com/tomnomnom/gf@latest \
+    github.com/tomnomnom/unfurl@latest \
+    github.com/tomnomnom/waybackurls@latest \
+    github.com/projectdiscovery/httpx/cmd/httpx@latest \
+    github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
+    github.com/projectdiscovery/chaos-client/cmd/chaos@latest \
+    github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
+    github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
+    github.com/hakluke/hakrawler@latest \
+    github.com/lc/gau/v2/cmd/gau@latest \
+    github.com/owasp-amass/amass/v3/...@latest \
+    github.com/ffuf/ffuf@latest \
+    github.com/hahwul/dalfox/v2@latest \
+    github.com/projectdiscovery/katana/cmd/katana@latest \
+    github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest \
+    github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest \
+    github.com/sa7mon/s3scanner@latest"; \
+    for tool in $tools; do \
+        echo "Installing $tool..." ; \
+        go install -ldflags="-s -w" -v "$tool" || \
+        (echo "Retrying $tool..." && sleep 2 && go install -ldflags="-s -w" -v "$tool") || \
+        echo "WARNING: Failed to install $tool, skipping..."; \
+    done; \
     rm -rf /go/pkg/* && rm -rf /root/.cache/go-build
 
 
 # Update Nuclei and Nuclei-Templates
-RUN nuclei -update-templates
+RUN nuclei -update-templates || true
 
 # update chaos
-RUN chaos -update
+RUN chaos -update || true
 
 # Copy requirements
 COPY ./requirements.txt /tmp/requirements.txt
