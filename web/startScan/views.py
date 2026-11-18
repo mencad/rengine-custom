@@ -478,6 +478,21 @@ def export_urls(request, scan_id):
     return response
 
 
+def export_subdomain_endpoints(request, subdomain_id):
+    subdomain = get_object_or_404(Subdomain, id=subdomain_id)
+    params_only = request.GET.get('params_only', 'false').lower() == 'true'
+    endpoints = EndPoint.objects.filter(subdomain=subdomain)
+    if params_only:
+        endpoints = endpoints.filter(http_url__contains='?')
+    response_body = "\n".join(ep.http_url for ep in endpoints)
+    prefix = "parameters" if params_only else "endpoints"
+    response = HttpResponse(response_body, content_type='text/plain')
+    response['Content-Disposition'] = (
+        f'attachment; filename="{prefix}_{subdomain.name}.txt"'
+    )
+    return response
+
+
 def export_burp_scope(request, scan_id):
     scan = get_object_or_404(ScanHistory, id=scan_id)
     domain_name = scan.domain.name

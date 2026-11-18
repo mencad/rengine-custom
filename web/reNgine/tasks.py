@@ -284,6 +284,7 @@ def initiate_subscan(
 	subscan_task_aliases = {
 		'api_discovery': 'kiterunner_scan',
 		'ssrf_audit': 'ssrf_oob_audit',
+		'crawl_and_param_discovery': 'crawl_and_param_discovery',
 	}
 	task_func_name = subscan_task_aliases.get(scan_type, scan_type)
 	method = globals().get(task_func_name)
@@ -5026,7 +5027,15 @@ def param_discovery(self, urls=[], ctx={}, description=None):
 		if subdomain_id:
 			subdomain = Subdomain.objects.filter(pk=subdomain_id).first()
 			if subdomain:
-				urls = [subdomain.http_url] if subdomain.http_url else [f'http://{subdomain.name}']
+				sub_endpoints = list(
+					EndPoint.objects.filter(subdomain=subdomain)
+					.exclude(http_url__contains='?')
+					.values_list('http_url', flat=True)[:max_endpoints]
+				)
+				if sub_endpoints:
+					urls = sub_endpoints
+				else:
+					urls = [subdomain.http_url] if subdomain.http_url else [f'http://{subdomain.name}']
 		elif self.scan_id:
 			urls = list(
 				EndPoint.objects.filter(scan_history_id=self.scan_id)
@@ -5095,3 +5104,19 @@ def param_discovery(self, urls=[], ctx={}, description=None):
 			logger.warning(f'[x8 Param Fuzzer] Notification error: {notif_err}')
 
 	logger.info(f'[x8 Param Fuzzer] Completed. Discovered {total_added} parameter-enriched endpoint(s).')
+
+
+@app.task(name='crawl_and_param_discovery', queue='main_scan_queue', base=RengineTask, bind=True)
+def crawl_and_param_discovery(self, urls=[], ctx={}, description=None):
+	"""Crawl URLs on target/subdomain and immediately discover hidden parameters using x8."""
+	logger.info('[Crawl & Param Fuzz] Starting chained Crawl + x8 Parameter Discovery...')
+	try:
+		fetch_url.run(self, urls=urls, ctx=ctx, description='Crawl and fetch URLs')
+	except Exception as crawl_err:
+		logger.error(f'[Crawl & Param Fuzz] Crawling stage encountered an error: {crawl_err}')
+
+	try:
+		param_discovery.run(self, urls=[], ctx=ctx, description='x8 parameter discovery')
+	except Exception as param_err:
+		logger.error(f'[Crawl & Param Fuzz] Parameter discovery stage encountered an error: {param_err}')
+

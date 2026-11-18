@@ -1152,9 +1152,14 @@ $(document).ready(function(){
 							<div class="btn-group mt-2">
 							<button type="button" data-toggle="tooltip" data-placement="top" title="Show Attack Surface" class="btn btn-primary me-1 bs-tooltip" onclick="show_attack_surface_modal(${row['id']})"><i class="fe-eye"></i></button>
 							<button type="button" data-toggle="tooltip" data-placement="top" title="Further Scan Subdomain" class="btn btn-primary btn-scan-subdomain me-1" id="${row['id']}"><i class="fe-zap"></i></button>
+							<button type="button" data-toggle="tooltip" data-placement="top" title="Crawl URLs & x8 Hidden Params" class="btn btn-soft-success me-1 bs-tooltip" onclick="quick_crawl_and_param_discovery(${row['id']}, '${row['name']}')"><i class="fe-crosshair"></i></button>
 							<button type="button" data-toggle="tooltip" data-placement="top" title="Add Recon Todo/Note" class="btn btn-primary me-1" id="${row['id']}" onclick="add_note_for_subdomain(${row['id']}, '${row['name']}')"><i class="fe-file-plus"></i></button>
 							<button class="btn btn-primary me-1 dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="mdi mdi-dots-horizontal"></i></button>
 							<div class="dropdown-menu dropdown-menu-end">
+							<a class="dropdown-item" href="javascript:void(0);" onclick="quick_crawl_and_param_discovery(${row['id']}, '${row['name']}')"><i class="fe-crosshair me-2 text-success font-18 vertical-middle"></i>Crawl & Discover Params (x8)</a>
+							<a class="dropdown-item" href="/scan/export/subdomain/${row['id']}/endpoints?params_only=true" target="_blank"><i class="fe-download me-2 text-primary font-18 vertical-middle"></i>Download Parameter URLs (.txt)</a>
+							<a class="dropdown-item" href="/scan/export/subdomain/${row['id']}/endpoints" target="_blank"><i class="fe-list me-2 text-info font-18 vertical-middle"></i>Download All Crawled URLs (.txt)</a>
+							<div class="dropdown-divider"></div>
 							<a class="dropdown-item" href="#" onclick="mark_important_subdomain(this, ${row['id']})" id="${row['id']}"><i class="mdi mdi-alert-rhombus-outline me-2 text-muted font-18 vertical-middle"></i>Mark Important Subdomain</a>
 							<a class="dropdown-item" href="#" onclick="detect_subdomain_cms('${cms_detector_http_url}', ${row['http_status']})"><i class="fe-grid me-2 text-muted font-18 vertical-middle"></i>Detect CMS</a>
 							<a class="text-danger dropdown-item btn-delete-subdomain" href="#" id="${row['id']}"><i class="text-danger mdi mdi-delete-forever-outline me-2 font-18 vertical-middle"></i>Delete Subdomain</a>

@@ -67,6 +67,10 @@ urlpatterns = [
         views.export_urls,
         name='export_http_urls'),
     path(
+        'export/subdomain/<int:subdomain_id>/endpoints',
+        views.export_subdomain_endpoints,
+        name='export_subdomain_endpoints'),
+    path(
         'export/burp_scope/<int:scan_id>',
         views.export_burp_scope,
         name='export_burp_scope'),

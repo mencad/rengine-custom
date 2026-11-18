@@ -366,7 +366,8 @@ class SubScan(models.Model):
 			'vhost_fuzzing': 'Virtual Host Discovery',
 			'api_discovery': 'API Route Discovery',
 			'ssrf_audit': 'SSRF Vulnerability Audit',
-			'param_discovery': 'Hidden Parameter Discovery (x8)'
+			'param_discovery': 'Hidden Parameter Discovery (x8)',
+			'crawl_and_param_discovery': 'Crawl & Hidden Parameter Discovery (x8)'
 		}
 		return taskmap.get(self.type, self.type.replace('_', ' ').title() if self.type else 'Unknown')
 

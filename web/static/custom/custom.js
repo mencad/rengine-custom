@@ -3536,3 +3536,65 @@ function handleSyncBookmarkedProgramsSwal() {
 		}
 	});
 }
+
+function quick_crawl_and_param_discovery(subdomain_id, subdomain_name) {
+	Swal.fire({
+		title: 'Crawl & x8 Param Discovery',
+		html: `Start automated URL crawling (Katana/GAU) and <b>x8</b> hidden parameter discovery on <br><code class="text-primary font-16">${subdomain_name}</code>?`,
+		icon: 'question',
+		showCancelButton: true,
+		confirmButtonColor: '#10c469',
+		cancelButtonColor: '#6c757d',
+		confirmButtonText: '<i class="fe-play me-1"></i> Start Scanning',
+		cancelButtonText: 'Cancel'
+	}).then((result) => {
+		if (result.isConfirmed) {
+			Swal.fire({
+				title: 'Initiating Task...',
+				text: 'Starting background crawl + x8 parameter discovery...',
+				allowOutsideClick: false,
+				didOpen: () => {
+					Swal.showLoading();
+				}
+			});
+			fetch('/api/action/initiate/subtask/', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: {
+					'X-CSRFToken': getCookie('csrftoken'),
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					'subdomain_ids': [subdomain_id],
+					'tasks': ['crawl_and_param_discovery']
+				})
+			})
+			.then(response => response.json())
+			.then(data => {
+				Swal.close();
+				if (data.status) {
+					Swal.fire({
+						title: 'Task Started!',
+						html: `Crawl & Parameter Discovery task running for <b>${subdomain_name}</b>.<br><small class="text-muted">You will receive a Telegram summary notification when complete.</small>`,
+						icon: 'success',
+						timer: 4000
+					});
+				} else {
+					Swal.fire({
+						icon: 'error',
+						title: 'Could not initiate task!',
+						text: data.error || 'Unknown error occurred.'
+					});
+				}
+			})
+			.catch(err => {
+				Swal.close();
+				Swal.fire({
+					icon: 'error',
+					title: 'Request Failed',
+					text: err.toString()
+				});
+			});
+		}
+	});
+}
