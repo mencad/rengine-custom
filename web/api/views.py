@@ -1514,9 +1514,12 @@ class Whois(APIView):
 			return Response({'status': False, 'message': 'Invalid domain or IP'})
 		is_force_update = req.query_params.get('is_reload')
 		is_force_update = True if is_force_update and 'true' == is_force_update.lower() else False
-		task = query_whois.apply_async(args=(target,is_force_update))
-		response = task.wait()
-		return Response(response)
+		try:
+			task = query_whois.apply_async(args=(target,is_force_update))
+			response = task.wait(timeout=15)
+			return Response(response)
+		except Exception as e:
+			return Response({'status': False, 'result': f'Could not fetch WHOIS: {str(e)}'})
 
 
 class ReverseWhois(APIView):

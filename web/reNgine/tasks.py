@@ -3918,7 +3918,10 @@ def query_whois(target, force_reload_whois=False):
 		if 'extracted_related_domains' in locals():
 			related_domains += extracted_related_domains
 		
-		whois_data = whois_data.get('data', {})
+		if whois_data and isinstance(whois_data, dict):
+			whois_data = whois_data.get('data', {}) if whois_data.get('status') else {}
+		else:
+			whois_data = {}
 
 		# related domains can also be fetched from whois_data
 		whois_related_domains = whois_data.get('related_domains', [])
