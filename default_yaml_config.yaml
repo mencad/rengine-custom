@@ -9,7 +9,7 @@
 # retries: 1                        # Nuclei
 
 subdomain_discovery: {
-  'uses_tools': ['subfinder', 'ctfr', 'sublist3r', 'oneforall', 'netlas'],  # amass-passive, amass-active, All
+  'uses_tools': ['subfinder', 'ctfr', 'sublist3r', 'chaos'],  # passive OSINT only (fast & clean, no DNS brute force)
   'enable_http_crawl': true,
   'threads': 30,
   'timeout': 5,
