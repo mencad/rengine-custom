@@ -2644,7 +2644,13 @@ class EndPointViewSet(viewsets.ModelViewSet):
 		subdomain_id = req.query_params.get('subdomain_id')
 		project = req.query_params.get('project')
 
-		endpoints_obj = EndPoint.objects.filter(scan_history__domain__project__slug=project)
+		if project:
+			endpoints_obj = EndPoint.objects.filter(
+				Q(scan_history__domain__project__slug=project) |
+				Q(target_domain__project__slug=project)
+			)
+		else:
+			endpoints_obj = EndPoint.objects.all()
 
 		gf_tag = req.query_params.get(
 			'gf_tag') if 'gf_tag' in req.query_params else None

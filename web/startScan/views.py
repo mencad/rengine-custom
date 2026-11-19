@@ -435,9 +435,7 @@ def start_multiple_scan(request, slug):
 def export_subdomains(request, scan_id):
     subdomain_list = Subdomain.objects.filter(scan_history__id=scan_id)
     scan = ScanHistory.objects.get(id=scan_id)
-    response_body = ""
-    for domain in subdomain_list:
-        response_body += response_body + domain.name + "\n"
+    response_body = "".join(f"{domain.name}\n" for domain in subdomain_list)
     scan_start_date_str = str(scan.start_scan_date.date())
     domain_name = scan.domain.name
     response = HttpResponse(response_body, content_type='text/plain')
@@ -450,9 +448,7 @@ def export_subdomains(request, scan_id):
 def export_endpoints(request, scan_id):
     endpoint_list = EndPoint.objects.filter(scan_history__id=scan_id)
     scan = ScanHistory.objects.get(id=scan_id)
-    response_body = ""
-    for endpoint in endpoint_list:
-        response_body += endpoint.http_url + "\n"
+    response_body = "".join(f"{endpoint.http_url}\n" for endpoint in endpoint_list)
     scan_start_date_str = str(scan.start_scan_date.date())
     domain_name = scan.domain.name
     response = HttpResponse(response_body, content_type='text/plain')
@@ -465,10 +461,7 @@ def export_endpoints(request, scan_id):
 def export_urls(request, scan_id):
     urls_list = Subdomain.objects.filter(scan_history__id=scan_id)
     scan = ScanHistory.objects.get(id=scan_id)
-    response_body = ""
-    for url in urls_list:
-        if url.http_url:
-            response_body += response_body + url.http_url + "\n"
+    response_body = "".join(f"{url.http_url}\n" for url in urls_list if url.http_url)
     scan_start_date_str = str(scan.start_scan_date.date())
     domain_name = scan.domain.name
     response = HttpResponse(response_body, content_type='text/plain')

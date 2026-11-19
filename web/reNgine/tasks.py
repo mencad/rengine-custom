@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import pprint
+import socket
 import subprocess
 import time
 import validators
@@ -561,11 +562,8 @@ def subdomain_discovery(
 	with open(self.output_path) as f:
 		lines = f.readlines()
 
-	# Parse the output_file file and store Subdomain and EndPoint objects found
-	# in db.
-	subdomain_count = 0
-	subdomains = []
-	urls = []
+	# Validate candidate subdomains
+	candidate_subdomains = []
 	for line in lines:
 		subdomain_name = line.strip()
 		valid_url = bool(validators.url(subdomain_name))
@@ -586,6 +584,36 @@ def subdomain_discovery(
 			logger.error(f'Subdomain {subdomain_name} is out of scope. Skipping.')
 			continue
 
+		candidate_subdomains.append(subdomain_name)
+
+	# Concurrent DNS resolution: filter dead & unresolvable brute-force junk subdomains
+	def _resolve_subdomain(name):
+		# Always preserve the root target domain
+		if host and name.lower() == host.lower():
+			return name, True
+		try:
+			socket.gethostbyname(name)
+			return name, True
+		except Exception:
+			return name, False
+
+	alive_subdomain_names = set()
+	if candidate_subdomains:
+		logger.info(f'Performing concurrent DNS resolution on {len(candidate_subdomains)} candidate subdomains...')
+		with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+			for name, is_alive in executor.map(_resolve_subdomain, candidate_subdomains):
+				if is_alive:
+					alive_subdomain_names.add(name)
+		logger.info(f'DNS resolution complete: {len(alive_subdomain_names)}/{len(candidate_subdomains)} subdomains are alive and resolvable.')
+
+	# Store only alive and resolvable subdomains in DB
+	subdomain_count = 0
+	subdomains = []
+	urls = []
+	for subdomain_name in candidate_subdomains:
+		if subdomain_name not in alive_subdomain_names:
+			continue
+
 		# Add subdomain
 		subdomain, _ = save_subdomain(subdomain_name, ctx=ctx)
 		if subdomain:
@@ -602,8 +630,13 @@ def subdomain_discovery(
 	for subdomain in subdomains:
 		pass
 
-	# Send notifications
-	subdomains_str = '\n'.join([f'• `{subdomain.name}`' for subdomain in subdomains])
+	# Send notifications (summarized if large to prevent flooding chat)
+	if len(subdomains) > 15:
+		subdomains_sample = '\n'.join([f'• `{s.name}`' for s in subdomains[:15]])
+		subdomains_str = f'{subdomains_sample}\n\n... and {len(subdomains) - 15} more subdomains (view in dashboard)'
+	else:
+		subdomains_str = '\n'.join([f'• `{s.name}`' for s in subdomains]) if subdomains else 'None'
+
 	self.notify(fields={
 		'Subdomain count': len(subdomains),
 		'Subdomains': subdomains_str,
@@ -3042,10 +3075,6 @@ def http_crawl(
 		endpoint.save()
 		endpoint_str = f'{http_url} [{http_status}] `{content_length}B` `{webserver}` `{rt}`'
 		logger.warning(endpoint_str)
-		if endpoint and endpoint.is_alive and endpoint.http_status != 403:
-			self.notify(
-				fields={'Alive endpoint': f'• {endpoint_str}'},
-				add_meta_info=False)
 
 		# Add endpoint to results
 		line['_cmd'] = cmd
@@ -3063,10 +3092,6 @@ def http_crawl(
 				subdomain.technologies.add(tech)
 				subdomain.save()
 			endpoint.save()
-		techs_str = ', '.join([f'`{tech}`' for tech in techs])
-		self.notify(
-			fields={'Technologies': techs_str},
-			add_meta_info=False)
 
 		# Add IP objects for 'a' records to DB
 		a_records = line.get('a', [])
@@ -3076,10 +3101,6 @@ def http_crawl(
 				subdomain,
 				subscan=self.subscan,
 				cdn=cdn)
-		ips_str = '• ' + '\n• '.join([f'`{ip}`' for ip in a_records])
-		self.notify(
-			fields={'IPs': ips_str},
-			add_meta_info=False)
 
 		# Add IP object for host in DB
 		if host:
@@ -3088,10 +3109,6 @@ def http_crawl(
 				subdomain,
 				subscan=self.subscan,
 				cdn=cdn)
-			if ip:
-				self.notify(
-					fields={'IPs': f'• `{ip.address}`'},
-					add_meta_info=False)
 
 		# Save subdomain and endpoint
 		if is_ran_from_subdomain_scan:
@@ -3127,6 +3144,14 @@ def http_crawl(
 		history_file=self.history_file,
 		scan_id=self.scan_id,
 		activity_id=self.activity_id)
+
+	# Send clean summary notification instead of spamming per URL
+	if results and track:
+		alive_count = len([r for r in results if not r.get('failed', False)])
+		self.notify(fields={
+			'Crawled URLs': len(results),
+			'Alive Endpoints': alive_count,
+		})
 
 	return results
 
